@@ -1,14 +1,15 @@
-import { createTool } from "@mastra/core";
-import { z } from "zod";
-// Import duckduckgo-search as a module
-import duckduckgoSearch from "duckduckgo-search";
+import { createTool } from '@mastra/core'
+import { z } from 'zod'
+// Import duckduckgo-search as a module (no longer used)
+// import duckduckgoSearch from 'duckduckgo-search'
+import { search, SafeSearchType } from 'duck-duck-scrape'
 
 // Define the input schema for the search tool
 const searchInputSchema = z.object({
-  query: z.string().min(1, "Search query must not be empty"),
+  query: z.string().min(1, 'Search query must not be empty'),
   maxResults: z.number().min(1).max(10).optional().default(5),
-  region: z.string().optional().default("wt-wt"),
-});
+  region: z.string().optional().default('wt-wt'),
+})
 
 // Define the output schema for the search tool
 const searchOutputSchema = z.object({
@@ -26,60 +27,87 @@ const searchOutputSchema = z.object({
     })
   ),
   timestamp: z.string(),
-});
+})
+
+// Helper function to add delay
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 // Create the search tool
 export const searchTool = createTool({
-  id: "webSearch",
+  id: 'webSearch',
   description:
-    "Performs web searches using DuckDuckGo and returns relevant results",
+    'Performs web searches using DuckDuckGo and returns relevant results',
   inputSchema: searchInputSchema,
   outputSchema: searchOutputSchema,
   execute: async ({ context }) => {
     try {
-      // Collect results using the async iterator pattern
-      const results = [];
-      let position = 0;
-      
-      // Use the text function which returns an async iterator
-      for await (const result of duckduckgoSearch.text(context.query, {
-        maxResults: context.maxResults,
-        region: context.region,
-      })) {
-        // Add position property manually
-        result.position = position++;
-        results.push(result);
-        
-        // Respect the maxResults limit
-        if (results.length >= context.maxResults) {
-          break;
+      // Add retry logic with exponential backoff
+      const maxRetries = 3
+      let retryCount = 0
+      let lastError
+
+      while (retryCount < maxRetries) {
+        try {
+          // Add a delay before each request to avoid rate limiting
+          // Increase delay with each retry
+          const delayTime = 1000 * Math.pow(2, retryCount)
+          await delay(delayTime)
+
+          // Use duck-duck-scrape's search function
+          const searchResults = await search(context.query, {
+            safeSearch: SafeSearchType.MODERATE,
+            locale: context.region || 'wt-wt',
+            count: context.maxResults || 5,
+          })
+
+          // Transform the results to match our schema
+          const transformedResults = searchResults.results.map(
+            (result, index) => ({
+              title: result.title,
+              url: result.url,
+              description: result.description || '',
+              position: index,
+              snippet: result.description,
+              snippet_html: result.description,
+              favicon: result.favicon || '',
+              domain: new URL(result.url).hostname,
+            })
+          )
+
+          return {
+            query: context.query,
+            results: transformedResults,
+            timestamp: new Date().toISOString(),
+          }
+        } catch (error) {
+          lastError = error
+          console.warn(`Search attempt ${retryCount + 1} failed:`, error)
+          retryCount++
+
+          // If this is not a rate limiting error, don't retry
+          if (
+            !(error instanceof Error) ||
+            !error.message.includes('DDG detected an anomaly')
+          ) {
+            break
+          }
         }
       }
 
-      // Transform the results to match our schema
-      const transformedResults = results.map((result: any) => ({
-        title: result.title,
-        url: result.url,
-        description: result.description || result.snippet || result.snippet_html || "",
-        position: result.position,
-        snippet: result.snippet,
-        snippet_html: result.snippet_html,
-        favicon: result.favicon,
-        domain: result.domain,
-      }));
-
-      return {
-        query: context.query,
-        results: transformedResults,
-        timestamp: new Date().toISOString(),
-      };
+      // If we've exhausted all retries, throw the last error
+      console.error('Search error after retries:', lastError)
+      throw new Error(
+        `Failed to perform search after ${maxRetries} attempts: ${
+          lastError instanceof Error ? lastError.message : String(lastError)
+        }`
+      )
     } catch (error) {
-      console.error("Search error:", error);
+      console.error('Search error:', error)
       throw new Error(
         `Failed to perform search: ${
           error instanceof Error ? error.message : String(error)
         }`
-      );
+      )
     }
   },
-});
+})
