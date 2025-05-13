@@ -69,7 +69,6 @@ export const searchTool = createTool({
               position: index,
               snippet: result.description,
               snippet_html: result.description,
-              favicon: result.favicon || '',
               domain: new URL(result.url).hostname,
             })
           )
