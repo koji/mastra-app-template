@@ -1,10 +1,13 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+https://github.com/user-attachments/assets/bfdba9d9-ab87-4657-91ec-0a56f2a362c0
 
 ## dependencies
 - next.js
 - assostamt-ui https://www.assistant-ui.com/
 - AI SDK Providers https://ai-sdk.dev/providers/ai-sdk-providers
+- mastra https://github.com/mastra-ai/mastra
+- duck-duck-scrape(for web search agent) https://github.com/Snazzah/duck-duck-scrape
 
 ## Getting Started
 
